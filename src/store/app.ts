@@ -1,5 +1,7 @@
 import { DispatchFn, GetStateFn, State, StateApp } from 'src/store/types';
 
+import { ClashAPIConfig } from '$src/types';
+
 import { loadState, saveState } from '../misc/storage';
 import { debounce, trimTrailingSlash } from '../misc/utils';
 import { fetchConfigs } from './configs';
@@ -9,37 +11,37 @@ export const getClashAPIConfig = (s: State) => {
   const idx = s.app.selectedClashAPIConfigIndex;
   return s.app.clashAPIConfigs[idx];
 };
-export const getSelectedClashAPIConfigIndex = (s: State) =>
-  s.app.selectedClashAPIConfigIndex;
+export const getSelectedClashAPIConfigIndex = (s: State) => s.app.selectedClashAPIConfigIndex;
 export const getClashAPIConfigs = (s: State) => s.app.clashAPIConfigs;
 export const getTheme = (s: State) => s.app.theme;
-export const getSelectedChartStyleIndex = (s: State) =>
-  s.app.selectedChartStyleIndex;
+export const getSelectedChartStyleIndex = (s: State) => s.app.selectedChartStyleIndex;
 export const getLatencyTestUrl = (s: State) => s.app.latencyTestUrl;
 export const getCollapsibleIsOpen = (s: State) => s.app.collapsibleIsOpen;
 export const getProxySortBy = (s: State) => s.app.proxySortBy;
-export const getHideUnavailableProxies = (s: State) =>
-  s.app.hideUnavailableProxies;
+export const getHideUnavailableProxies = (s: State) => s.app.hideUnavailableProxies;
 export const getAutoCloseOldConns = (s: State) => s.app.autoCloseOldConns;
+export const getLogStreamingPaused = (s: State) => s.app.logStreamingPaused;
 
 const saveStateDebounced = debounce(saveState, 600);
 
-// @ts-expect-error ts-migrate(7030) FIXME: Not all code paths return a value.
-function findClashAPIConfigIndex(getState: GetStateFn, { baseURL, secret }) {
+function findClashAPIConfigIndex(
+  getState: GetStateFn,
+  { baseURL, secret, metaLabel }: ClashAPIConfig
+) {
   const arr = getClashAPIConfigs(getState());
   for (let i = 0; i < arr.length; i++) {
     const x = arr[i];
-    if (x.baseURL === baseURL && x.secret === secret) return i;
+    if (x.baseURL === baseURL && x.secret === secret && x.metaLabel === metaLabel) return i;
   }
 }
 
-export function addClashAPIConfig({ baseURL, secret }) {
+export function addClashAPIConfig(conf: ClashAPIConfig) {
   return async (dispatch: DispatchFn, getState: GetStateFn) => {
-    const idx = findClashAPIConfigIndex(getState, { baseURL, secret });
+    const idx = findClashAPIConfigIndex(getState, conf);
     // already exists
     if (idx) return;
 
-    const clashAPIConfig = { baseURL, secret, addedAt: Date.now() };
+    const clashAPIConfig = { ...conf, addedAt: Date.now() };
     dispatch('addClashAPIConfig', (s) => {
       s.app.clashAPIConfigs.push(clashAPIConfig);
     });
@@ -48,9 +50,9 @@ export function addClashAPIConfig({ baseURL, secret }) {
   };
 }
 
-export function removeClashAPIConfig({ baseURL, secret }) {
+export function removeClashAPIConfig(conf: ClashAPIConfig) {
   return async (dispatch: DispatchFn, getState: GetStateFn) => {
-    const idx = findClashAPIConfigIndex(getState, { baseURL, secret });
+    const idx = findClashAPIConfigIndex(getState, conf);
     dispatch('removeClashAPIConfig', (s) => {
       s.app.clashAPIConfigs.splice(idx, 1);
     });
@@ -59,9 +61,9 @@ export function removeClashAPIConfig({ baseURL, secret }) {
   };
 }
 
-export function selectClashAPIConfig({ baseURL, secret }) {
+export function selectClashAPIConfig(conf: ClashAPIConfig) {
   return async (dispatch: DispatchFn, getState: GetStateFn) => {
-    const idx = findClashAPIConfigIndex(getState, { baseURL, secret });
+    const idx = findClashAPIConfigIndex(getState, conf);
     const curr = getSelectedClashAPIConfigIndex(getState());
     if (curr !== idx) {
       dispatch('selectClashAPIConfig', (s) => {
@@ -82,9 +84,9 @@ export function selectClashAPIConfig({ baseURL, secret }) {
 }
 
 // unused
-export function updateClashAPIConfig({ baseURL, secret }) {
+export function updateClashAPIConfig(conf: ClashAPIConfig) {
   return async (dispatch: DispatchFn, getState: GetStateFn) => {
-    const clashAPIConfig = { baseURL, secret };
+    const clashAPIConfig = conf;
     dispatch('appUpdateClashAPIConfig', (s) => {
       s.app.clashAPIConfigs[0] = clashAPIConfig;
     });
@@ -96,34 +98,73 @@ export function updateClashAPIConfig({ baseURL, secret }) {
 }
 
 const rootEl = document.querySelector('html');
-const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-function setTheme(theme = 'dark') {
-  if (theme === 'dark') {
-    rootEl.setAttribute('data-theme', 'dark');
-    themeColorMeta.setAttribute('content', '#202020');
+type ThemeType = 'dark' | 'light' | 'auto';
+
+function insertThemeColorMeta(color: string, media?: string) {
+  const meta0 = document.createElement('meta');
+  meta0.setAttribute('name', 'theme-color');
+  meta0.setAttribute('content', color);
+  if (media) meta0.setAttribute('media', media);
+  document.head.appendChild(meta0);
+}
+
+function updateMetaThemeColor(theme: ThemeType) {
+  const metas = Array.from(
+    document.querySelectorAll('meta[name=theme-color]')
+  ) as HTMLMetaElement[];
+  let meta0: HTMLMetaElement;
+  for (const m of metas) {
+    if (!m.getAttribute('media')) {
+      meta0 = m;
+    } else {
+      document.head.removeChild(m);
+    }
+  }
+
+  if (theme === 'auto') {
+    insertThemeColorMeta('#eeeeee', '(prefers-color-scheme: light)');
+    insertThemeColorMeta('#202020', '(prefers-color-scheme: dark)');
+    if (meta0) {
+      document.head.removeChild(meta0);
+    } else {
+      return;
+    }
   } else {
-    rootEl.setAttribute('data-theme', 'light');
-    themeColorMeta.setAttribute('content', '#eeeeee');
+    const color = theme === 'light' ? '#eeeeee' : '#202020';
+    if (!meta0) {
+      insertThemeColorMeta(color);
+    } else {
+      meta0.setAttribute('content', color);
+    }
   }
 }
 
-export function switchTheme() {
+function setTheme(theme: ThemeType = 'dark') {
+  if (theme === 'auto') {
+    rootEl.setAttribute('data-theme', 'auto');
+  } else if (theme === 'dark') {
+    rootEl.setAttribute('data-theme', 'dark');
+  } else {
+    rootEl.setAttribute('data-theme', 'light');
+  }
+  updateMetaThemeColor(theme);
+}
+
+export function switchTheme(nextTheme = 'auto') {
   return (dispatch: DispatchFn, getState: GetStateFn) => {
     const currentTheme = getTheme(getState());
-    const theme = currentTheme === 'light' ? 'dark' : 'light';
+    if (currentTheme === nextTheme) return;
     // side effect
-    setTheme(theme);
+    setTheme(nextTheme as ThemeType);
     dispatch('storeSwitchTheme', (s) => {
-      s.app.theme = theme;
+      s.app.theme = nextTheme;
     });
     // side effect
     saveState(getState().app);
   };
 }
 
-export function selectChartStyleIndex(
-  selectedChartStyleIndex: number | string
-) {
+export function selectChartStyleIndex(selectedChartStyleIndex: number | string) {
   return (dispatch: DispatchFn, getState: GetStateFn) => {
     dispatch('appSelectChartStyleIndex', (s) => {
       s.app.selectedChartStyleIndex = Number(selectedChartStyleIndex);
@@ -143,11 +184,7 @@ export function updateAppConfig(name: string, value: unknown) {
   };
 }
 
-export function updateCollapsibleIsOpen(
-  prefix: string,
-  name: string,
-  v: boolean
-) {
+export function updateCollapsibleIsOpen(prefix: string, name: string, v: boolean) {
   return (dispatch: DispatchFn, getState: GetStateFn) => {
     dispatch('updateCollapsibleIsOpen', (s: State) => {
       s.app.collapsibleIsOpen[`${prefix}:${name}`] = v;
@@ -158,9 +195,7 @@ export function updateCollapsibleIsOpen(
 }
 
 const defaultClashAPIConfig = {
-  baseURL:
-    document.getElementById('app')?.getAttribute('data-base-url') ??
-    'http://127.0.0.1:9090',
+  baseURL: document.getElementById('app')?.getAttribute('data-base-url') ?? 'http://127.0.0.1:9090',
   secret: '',
   addedAt: 0,
 };
@@ -179,6 +214,7 @@ const defaultState: StateApp = {
   proxySortBy: 'Natural',
   hideUnavailableProxies: false,
   autoCloseOldConns: false,
+  logStreamingPaused: false,
 };
 
 function parseConfigQueryString() {
@@ -202,7 +238,11 @@ export function initialState() {
   if (conf) {
     const url = new URL(conf.baseURL);
     if (query.hostname) {
-      url.hostname = query.hostname;
+      if (query.hostname.indexOf('http') === 0) {
+        url.href = decodeURIComponent(query.hostname);
+      } else {
+        url.hostname = query.hostname;
+      }
     }
     if (query.port) {
       url.port = query.port;
