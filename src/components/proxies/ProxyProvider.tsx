@@ -1,4 +1,4 @@
-import Tooltip from '@reach/tooltip';
+import { Tooltip } from '@reach/tooltip';
 import { formatDistance } from 'date-fns';
 import * as React from 'react';
 import { RotateCw } from 'react-feather';
@@ -6,7 +6,7 @@ import Button from 'src/components/Button';
 import CollapsibleSectionHeader from 'src/components/CollapsibleSectionHeader';
 import { useUpdateProviderItem } from 'src/components/proxies/proxies.hooks';
 import { connect, useStoreActions } from 'src/components/StateProvider';
-import { framerMotionResouce } from 'src/misc/motion';
+import { framerMotionResource } from 'src/misc/motion';
 import {
   getClashAPIConfig,
   getCollapsibleIsOpen,
@@ -16,9 +16,9 @@ import {
 import { getDelay, healthcheckProviderByName } from 'src/store/proxies';
 import { DelayMapping, State } from 'src/store/types';
 
+import { ZapAnimated } from '$src/components/shared/ZapAnimated';
 import { useState2 } from '$src/hooks/basic';
 
-import { ZapAnimated } from '../shared/ZapAnimated';
 import { useFilteredAndSorted } from './hooks';
 import { ProxyList, ProxyListSummaryView } from './ProxyList';
 import s from './ProxyProvider.module.scss';
@@ -113,7 +113,7 @@ const arrow = {
   hover: { rotate: 360, transition: { duration: 0.3 } },
 };
 function Refresh() {
-  const module = framerMotionResouce.read();
+  const module = framerMotionResource.read();
   const motion = module.motion;
   return (
     <motion.div

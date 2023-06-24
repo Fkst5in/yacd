@@ -6,12 +6,14 @@ import { useSortBy, useTable } from 'react-table';
 
 import prettyBytes from '../misc/pretty-bytes';
 import s from './ConnectionTable.module.scss';
+import { MutableConnRefCtx } from './conns/ConnCtx';
 
 const sortDescFirst = true;
 
-const columns = [
+const fullColumns = [
   { accessor: 'id', show: false },
   { Header: 'Host', accessor: 'host' },
+  { Header: 'Process', accessor: 'process' },
   { Header: 'DL', accessor: 'download', sortDescFirst },
   { Header: 'UL', accessor: 'upload', sortDescFirst },
   { Header: 'DL Speed', accessor: 'downloadSpeedCurr', sortDescFirst },
@@ -23,6 +25,9 @@ const columns = [
   { Header: 'Destination IP', accessor: 'destinationIP' },
   { Header: 'Type', accessor: 'type' },
 ];
+
+const columns = fullColumns;
+const columnsWithoutProcess = fullColumns.filter((item) => item.accessor !== 'process');
 
 function renderCell(cell: { column: { id: string }; value: number }) {
   switch (cell.column.id) {
@@ -49,9 +54,10 @@ const tableState = {
 };
 
 function Table({ data }) {
+  const connCtx = React.useContext(MutableConnRefCtx);
   const { getTableProps, headerGroups, rows, prepareRow } = useTable(
     {
-      columns,
+      columns: connCtx.hasProcessPath ? columns : columnsWithoutProcess,
       data,
       initialState: tableState,
       autoResetSortBy: false,
@@ -59,7 +65,13 @@ function Table({ data }) {
     useSortBy
   );
   return (
-    <div {...getTableProps()}>
+    <div
+      {...getTableProps()}
+      style={{
+        // @ts-ignore
+        '--col-count': connCtx.hasProcessPath ? '12' : '11',
+      }}
+    >
       {headerGroups.map((headerGroup) => {
         return (
           <div {...headerGroup.getHeaderGroupProps()} className={s.tr}>
@@ -85,7 +97,13 @@ function Table({ data }) {
                     className={cx(
                       s.td,
                       i % 2 === 0 ? s.odd : false,
-                      j >= 1 && j <= 4 ? s.du : false
+                      connCtx.hasProcessPath
+                        ? j >= 2 && j <= 5
+                          ? s.du
+                          : false
+                        : j >= 1 && j <= 4
+                        ? s.du
+                        : false
                     )}
                   >
                     {renderCell(cell)}

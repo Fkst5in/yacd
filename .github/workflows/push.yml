@@ -6,6 +6,11 @@ concurrency:
 jobs:
   install:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # https://github.com/actions/deploy-pages
+      pages: write
+      id-token: write
     strategy:
       matrix:
         node-version: [16.x]
@@ -26,13 +31,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-
 
-      - uses: pnpm/action-setup@v2.2.2
+      - uses: pnpm/action-setup@v2.2.4
         with:
           version: 7
           run_install: true
 
       - name: Lint
         run: pnpm lint
+      - name: Set git commit sha
+        id: revparse
+        run: |
+          echo "COMMIT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
       - name: Build
         run: pnpm build
 
@@ -65,7 +74,7 @@ jobs:
       - name: Push to gh-pages
         if: github.event_name == 'push' && (startsWith(github.event.ref, 'refs/tags/') || github.event.ref == 'refs/heads/publish')
         env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PUBLISH_DIR: public
           BRANCH: gh-pages
         run: |
@@ -74,6 +83,7 @@ jobs:
           git init
           git config user.name "${GITHUB_ACTOR}"
           git config user.email "${GITHUB_ACTOR}@noreply.github.com"
+          touch .nojekyll
           git add .
           git status
           git commit -m "Push to gh-pages"
@@ -92,6 +102,10 @@ jobs:
     if: github.event_name == 'push' && (startsWith(github.event.ref, 'refs/tags/') || startsWith(github.event.ref, 'refs/heads/v0.') || github.event.ref == 'refs/heads/master' || github.event.ref == 'refs/heads/test')
     steps:
       - uses: actions/checkout@v3
+      - name: Set git commit sha
+        id: revparse
+        run: |
+          echo "COMMIT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
       - name: Cache Docker layers
         uses: actions/cache@v3
@@ -146,6 +160,8 @@ jobs:
           labels: ${{ steps.docker_meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha
+          build-args: |
+            COMMIT_HASH=${{ env.COMMIT_HASH }}
 
       - name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
